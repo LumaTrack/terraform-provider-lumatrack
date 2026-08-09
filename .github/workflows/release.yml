@@ -1,0 +1,46 @@
+# Publishes a release when a v* tag is pushed. The Terraform Registry then
+# picks the release up and lists the new version.
+#
+# Before the first tag, the founder has to do two things by hand:
+#   1. Add the ASCII-armored GPG public key under the Registry's User Settings,
+#      Signing Keys. The registry accepts RSA and DSA, and rejects the default
+#      ECC type, so generate accordingly.
+#   2. Store the matching private key as the GPG_PRIVATE_KEY secret and its
+#      passphrase as PASSPHRASE.
+# Until both exist the signing step below fails, which is the intended
+# behavior: an unsigned release is one the registry will not accept anyway.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # goreleaser reads older tags to build the version.
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7.0.0
+        id: import_gpg
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.PASSPHRASE }}
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
